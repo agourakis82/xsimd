@@ -256,4 +256,41 @@ TEST_CASE_TEMPLATE("[complex power]", B, BATCH_COMPLEX_TYPES)
         Test.test_sqrt_pp();
     }
 }
+#ifndef __FAST_MATH__
+TEST_CASE_TEMPLATE("[complex sqrt signed zero]", B, BATCH_COMPLEX_TYPES)
+{
+    using value_type = typename B::value_type;
+    using real_type = typename value_type::value_type;
+    const real_type zero(0);
+    const std::array<real_type, 10> real_parts = {
+        -std::numeric_limits<real_type>::max(), real_type(-4), real_type(-1),
+        -std::numeric_limits<real_type>::denorm_min(), -zero, zero,
+        std::numeric_limits<real_type>::denorm_min(), real_type(1), real_type(4),
+        std::numeric_limits<real_type>::max()
+    };
+    std::array<value_type, B::size> inputs;
+    std::array<value_type, B::size> results;
+
+    for (size_t start = 0; start < 2 * real_parts.size(); ++start)
+    {
+        for (size_t lane = 0; lane < B::size; ++lane)
+        {
+            const size_t index = (start + lane) % (2 * real_parts.size());
+            inputs[lane] = value_type(real_parts[index / 2], index % 2 ? -zero : zero);
+        }
+
+        xsimd::sqrt(B::load_unaligned(inputs.data())).store_unaligned(results.data());
+
+        for (size_t lane = 0; lane < B::size; ++lane)
+        {
+            const auto expected = std::sqrt(inputs[lane]);
+            CHECK_EQ(results[lane].real(), expected.real());
+            CHECK_EQ(results[lane].imag(), expected.imag());
+            CHECK_EQ(std::signbit(results[lane].real()), std::signbit(expected.real()));
+            CHECK_EQ(std::signbit(results[lane].imag()), std::signbit(expected.imag()));
+        }
+    }
+}
+#endif
+
 #endif
