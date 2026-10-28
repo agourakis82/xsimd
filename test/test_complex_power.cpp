@@ -283,7 +283,15 @@ TEST_CASE_TEMPLATE("[complex sqrt signed zero]", B, BATCH_COMPLEX_TYPES)
 
         for (size_t lane = 0; lane < B::size; ++lane)
         {
-            const auto expected = std::sqrt(inputs[lane]);
+            // Use the real-axis identity: some complex sqrt implementations
+            // evaluate polar coordinates and leave a nonzero real residual
+            // on the negative real axis.
+            const auto x = inputs[lane].real();
+            const auto y = inputs[lane].imag();
+            const auto magnitude = std::sqrt(std::abs(x));
+            const value_type expected = x < zero
+                ? value_type(zero, std::copysign(magnitude, y))
+                : value_type(magnitude, y);
             CHECK_EQ(results[lane].real(), expected.real());
             CHECK_EQ(results[lane].imag(), expected.imag());
             CHECK_EQ(std::signbit(results[lane].real()), std::signbit(expected.real()));
