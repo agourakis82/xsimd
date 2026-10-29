@@ -270,6 +270,7 @@ TEST_CASE_TEMPLATE("[complex sqrt signed zero]", B, BATCH_COMPLEX_TYPES)
     };
     std::array<value_type, B::size> inputs;
     std::array<value_type, B::size> results;
+    std::array<real_type, B::size> magnitudes;
 
     for (size_t start = 0; start < 2 * real_parts.size(); ++start)
     {
@@ -279,16 +280,17 @@ TEST_CASE_TEMPLATE("[complex sqrt signed zero]", B, BATCH_COMPLEX_TYPES)
             inputs[lane] = value_type(real_parts[index / 2], index % 2 ? -zero : zero);
         }
 
-        xsimd::sqrt(B::load_unaligned(inputs.data())).store_unaligned(results.data());
+        const auto batch_inputs = B::load_unaligned(inputs.data());
+        xsimd::sqrt(batch_inputs).store_unaligned(results.data());
+        // Test complex composition while preserving the real backend's
+        // rounding and underflow behavior.
+        xsimd::sqrt(xsimd::abs(batch_inputs.real())).store_unaligned(magnitudes.data());
 
         for (size_t lane = 0; lane < B::size; ++lane)
         {
-            // Use the real-axis identity: some complex sqrt implementations
-            // evaluate polar coordinates and leave a nonzero real residual
-            // on the negative real axis.
             const auto x = inputs[lane].real();
             const auto y = inputs[lane].imag();
-            const auto magnitude = std::sqrt(std::abs(x));
+            const auto magnitude = magnitudes[lane];
             const value_type expected = x < zero
                 ? value_type(zero, std::copysign(magnitude, y))
                 : value_type(magnitude, y);
