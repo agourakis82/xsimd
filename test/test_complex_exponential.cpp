@@ -213,4 +213,52 @@ TEST_CASE_TEMPLATE("[complex exponential]", B, BATCH_COMPLEX_TYPES)
         Test.test_sign();
     }
 }
+#ifndef __FAST_MATH__
+TEST_CASE_TEMPLATE("[complex log1p branch cut]", B, BATCH_COMPLEX_TYPES)
+{
+    using value_type = typename B::value_type;
+    using real_type = typename value_type::value_type;
+    const real_type zero(0);
+    const auto below = std::nextafter(real_type(-1), real_type(-2));
+    const std::array<value_type, 14> samples = {
+        value_type(-4, zero), value_type(-4, -zero),
+        value_type(-2, zero), value_type(-2, -zero),
+        value_type(below, zero), value_type(below, -zero),
+        value_type(-2, real_type(0.5)), value_type(-2, real_type(-0.5)),
+        value_type(real_type(-0.5), real_type(0.25)), value_type(real_type(-0.5), real_type(-0.25)),
+        value_type(2, 1), value_type(2, -1),
+        value_type(zero, zero), value_type(zero, -zero)
+    };
+    std::array<value_type, B::size> inputs;
+    std::array<value_type, B::size> results;
+    const auto tolerance = real_type(64) * std::numeric_limits<real_type>::epsilon();
+    for (size_t start = 0; start < samples.size(); ++start)
+    {
+        for (size_t lane = 0; lane < B::size; ++lane)
+        {
+            inputs[lane] = samples[(start + lane) % samples.size()];
+        }
+        xsimd::log1p(B::load_unaligned(inputs.data())).store_unaligned(results.data());
+        for (size_t lane = 0; lane < B::size; ++lane)
+        {
+            const auto expected = std::log(value_type(real_type(1) + inputs[lane].real(), inputs[lane].imag()));
+            if (std::isinf(expected.real()))
+            {
+                CHECK(std::isinf(results[lane].real()));
+                CHECK_EQ(std::signbit(results[lane].real()), std::signbit(expected.real()));
+            }
+            else
+            {
+                CHECK_EQ(results[lane].real(), doctest::Approx(expected.real()).epsilon(tolerance).scale(1));
+            }
+            CHECK_EQ(results[lane].imag(), doctest::Approx(expected.imag()).epsilon(tolerance).scale(1));
+            CHECK_EQ(std::signbit(results[lane].imag()), std::signbit(expected.imag()));
+            if (expected.imag() == zero)
+            {
+                CHECK_EQ(results[lane].imag(), zero);
+            }
+        }
+    }
+}
+#endif
 #endif
