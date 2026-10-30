@@ -229,4 +229,58 @@ TEST_CASE_TEMPLATE("[complex trigonometric]", B, BATCH_COMPLEX_TYPES)
         Test.test_atan();
     }
 }
+#ifndef __FAST_MATH__
+TEST_CASE_TEMPLATE("[complex asin acos real axis]", B, BATCH_COMPLEX_TYPES)
+{
+    using value_type = typename B::value_type;
+    using real_type = typename value_type::value_type;
+    const real_type zero(0);
+    const auto outside = std::nextafter(real_type(1), real_type(2));
+    const std::array<real_type, 12> real_parts = {
+        real_type(-4), real_type(-2), -outside, real_type(-1), real_type(-0.5), -zero,
+        zero, real_type(0.5), real_type(1), outside, real_type(2), real_type(4)
+    };
+    std::array<value_type, 28> samples;
+    for (size_t i = 0; i < real_parts.size(); ++i)
+    {
+        samples[2 * i] = value_type(real_parts[i], zero);
+        samples[2 * i + 1] = value_type(real_parts[i], -zero);
+    }
+    samples[24] = value_type(-2, -1);
+    samples[25] = value_type(2, 1);
+    samples[26] = value_type(real_type(-0.5), real_type(0.5));
+    samples[27] = value_type(real_type(0.5), real_type(-0.5));
+    std::array<value_type, B::size> inputs;
+    std::array<value_type, B::size> results;
+    const auto tolerance = real_type(64) * std::numeric_limits<real_type>::epsilon();
+    for (size_t start = 0; start < samples.size(); ++start)
+    {
+        for (size_t lane = 0; lane < B::size; ++lane)
+        {
+            inputs[lane] = samples[(start + lane) % samples.size()];
+        }
+        for (bool cosine : { false, true })
+        {
+            const auto batch = B::load_unaligned(inputs.data());
+            (cosine ? xsimd::acos(batch) : xsimd::asin(batch)).store_unaligned(results.data());
+            for (size_t lane = 0; lane < B::size; ++lane)
+            {
+                const auto expected = cosine ? std::acos(inputs[lane]) : std::asin(inputs[lane]);
+                CHECK_EQ(results[lane].real(), doctest::Approx(expected.real()).epsilon(tolerance).scale(1));
+                CHECK_EQ(results[lane].imag(), doctest::Approx(expected.imag()).epsilon(tolerance).scale(1));
+                if (expected.real() == zero)
+                {
+                    CHECK_EQ(results[lane].real(), zero);
+                    CHECK_EQ(std::signbit(results[lane].real()), std::signbit(expected.real()));
+                }
+                if (expected.imag() == zero)
+                {
+                    CHECK_EQ(results[lane].imag(), zero);
+                    CHECK_EQ(std::signbit(results[lane].imag()), std::signbit(expected.imag()));
+                }
+            }
+        }
+    }
+}
+#endif
 #endif
