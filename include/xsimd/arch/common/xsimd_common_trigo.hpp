@@ -359,8 +359,12 @@ namespace xsimd
             const batch_type q_p = abs(other / self);
 #else
             const auto both_zero = (self == batch_type(0.)) && (other == batch_type(0.));
-            const batch_type q = abs(select(both_zero, batch_type(1.), self)
-                                     / select(both_zero, batch_type(1.), other));
+            auto use_unit_ratio = both_zero;
+#ifndef XSIMD_NO_INFINITIES
+            use_unit_ratio = use_unit_ratio || (isinf(self) && isinf(other));
+#endif
+            const batch_type q = abs(select(use_unit_ratio, batch_type(1.), self)
+                                     / select(use_unit_ratio, batch_type(1.), other));
             const batch_type q_p = 1. / q;
 #endif
             const batch_type z = detail::kernel_atan(q, q_p);
