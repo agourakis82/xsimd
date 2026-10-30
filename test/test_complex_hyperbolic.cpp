@@ -172,4 +172,41 @@ TEST_CASE_TEMPLATE("[complex hyperbolic]", B, BATCH_COMPLEX_TYPES)
         Test.test_atanh();
     }
 }
+TEST_CASE_TEMPLATE("[complex acosh principal branch]", B, BATCH_COMPLEX_TYPES)
+{
+    using value_type = typename B::value_type;
+    using real_type = typename value_type::value_type;
+    const std::array<value_type, 16> samples = {
+        value_type(-4, 1), value_type(-4, -1),
+        value_type(-2, 1), value_type(-2, -1),
+        value_type(-1, 1), value_type(-1, -1),
+        value_type(real_type(-0.5), 1), value_type(real_type(-0.5), -1),
+        value_type(real_type(0.5), 1), value_type(real_type(0.5), -1),
+        value_type(1, 1), value_type(1, -1),
+        value_type(2, 1), value_type(2, -1),
+        value_type(4, 1), value_type(4, -1)
+    };
+    std::array<value_type, B::size> inputs;
+    std::array<value_type, B::size> results;
+    const auto tolerance = real_type(64) * std::numeric_limits<real_type>::epsilon();
+    for (size_t start = 0; start < samples.size(); ++start)
+    {
+        for (size_t lane = 0; lane < B::size; ++lane)
+        {
+            inputs[lane] = samples[(start + lane) % samples.size()];
+        }
+        xsimd::acosh(B::load_unaligned(inputs.data())).store_unaligned(results.data());
+        for (size_t lane = 0; lane < B::size; ++lane)
+        {
+            const auto expected = std::acosh(inputs[lane]);
+            CHECK_EQ(results[lane].real(), doctest::Approx(expected.real()).epsilon(tolerance).scale(1));
+            CHECK_EQ(results[lane].imag(), doctest::Approx(expected.imag()).epsilon(tolerance).scale(1));
+            CHECK_GE(results[lane].real(), real_type(0));
+            CHECK_EQ(std::signbit(results[lane].imag()), std::signbit(inputs[lane].imag()));
+            const auto recovered = std::cosh(results[lane]);
+            CHECK_EQ(recovered.real(), doctest::Approx(inputs[lane].real()).epsilon(tolerance).scale(1));
+            CHECK_EQ(recovered.imag(), doctest::Approx(inputs[lane].imag()).epsilon(tolerance).scale(1));
+        }
+    }
+}
 #endif
