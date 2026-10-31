@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory=$true)][string]$Exe,
     [Parameter(Mandatory=$true)][string]$OutputDir,
     [switch]$Smoke,
-    [switch]$RequireSqrt
+    [switch]$RequireSqrt,
+    [switch]$LocalizePower
 )
 $ErrorActionPreference = 'Stop'
 $resolved = (Resolve-Path -LiteralPath $Exe).Path
@@ -14,6 +15,14 @@ $cases = @(
     @{Name='full'; Args='--no-colors=true'}
 )
 if ($Smoke) { $cases = @(@{Name='smoke'; Args=''}) }
+if ($LocalizePower) {
+    $cases = @(
+        @{Name='power'; Args='--no-colors=true --test-case="[power]*"'},
+        @{Name='power-trace'; Args='--no-colors=true --success=true --test-case="[power]*"'},
+        @{Name='without-power'; Args='--no-colors=true --test-case-exclude="[power]*"'},
+        @{Name='full'; Args='--no-colors=true'}
+    )
+}
 $results = @()
 $failed = $false
 foreach ($case in $cases) {

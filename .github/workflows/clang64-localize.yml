@@ -1,0 +1,56 @@
+name: Localize CLANG64 floating exception
+on:
+  push:
+    branches: ['diagnostics/clang64-20261031']
+    paths: ['.github/workflows/clang64-localize.yml', 'native-status.ps1']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  localize:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: diagnostic
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
+        with:
+          msystem: CLANG64
+          update: true
+          path-type: minimal
+          pacboy: cc:p cmake:p ninja:p
+      - uses: actions/download-artifact@v4
+        with:
+          name: clang64-paired-native-status
+          path: previous
+          run-id: 41210500390
+          github-token: ${{ github.token }}
+      - name: Separate power tests from the remaining suite
+        shell: msys2 {0}
+        run: |
+          set -uo pipefail
+          root="$PWD"
+          mkdir -p evidence
+          pacman -Q > evidence/packages.txt
+          failed=0
+          for name in baseline candidate; do
+            mkdir -p "evidence/$name"
+            # These exact binaries were compiled as C++23 in run 41210500390.
+            cp "previous/$name/source-sha.txt" "evidence/$name/" || failed=1
+            sha256sum "previous/$name/test_xsimd.exe" > "evidence/$name/executable.sha256" || failed=1
+            /c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile \
+              -File "$(cygpath -w "$root/diagnostic/native-status.ps1")" \
+              -Exe "$(cygpath -w "$root/previous/$name/test_xsimd.exe")" \
+              -OutputDir "$(cygpath -w "$root/evidence/$name")" -LocalizePower \
+              > "evidence/$name/native-launch.log" 2>&1 || failed=1
+          done
+          exit "$failed"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: clang64-power-localization
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14

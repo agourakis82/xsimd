@@ -1,7 +1,5 @@
 name: Isolated CLANG64 diagnosis
 on:
-  push:
-    branches: ['diagnostics/clang64-20261031']
   workflow_dispatch:
 permissions:
   contents: read
