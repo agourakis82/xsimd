@@ -1,0 +1,42 @@
+name: Isolated CLANG64 diagnosis
+on:
+  push:
+    branches: ['diagnostics/clang64-20261031']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  paired:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: diagnostic
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
+        with:
+          msystem: CLANG64
+          update: true
+          path-type: minimal
+          pacboy: cc:p cmake:p ninja:p
+      - uses: actions/checkout@v6
+        with:
+          repository: xtensor-stack/xsimd
+          ref: ebe9991fb0e8ed2dfb7c1a9425aaf6b104adab86
+          path: baseline
+      - uses: actions/checkout@v6
+        with:
+          repository: xtensor-stack/xsimd
+          ref: d46d757429cd2fd3abad7250445cec9d493b3f59
+          path: candidate
+      - name: Build and capture native status in the same environment
+        shell: msys2 {0}
+        run: bash diagnostic/diagnose.sh
+      - name: Retain diagnostics and executable provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang64-paired-native-status
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
