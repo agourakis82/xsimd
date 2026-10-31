@@ -1,8 +1,5 @@
 name: Separate pow arithmetic from test machinery
 on:
-  push:
-    branches: ['diagnostics/clang64-20261031']
-    paths: ['.github/workflows/clang64-pow-probe.yml', 'pow-probe.cpp']
   workflow_dispatch:
 permissions:
   contents: read

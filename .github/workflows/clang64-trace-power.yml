@@ -1,0 +1,54 @@
+name: Trace original power test exception
+on:
+  push:
+    branches: ['diagnostics/clang64-20261031']
+    paths: ['.github/workflows/clang64-trace-power.yml', 'instrument.awk', 'trace-main.cpp']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  trace:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: diagnostic
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
+        with:
+          msystem: CLANG64
+          update: true
+          path-type: minimal
+          pacboy: cc:p cmake:p ninja:p
+      - uses: actions/checkout@v6
+        with:
+          repository: xtensor-stack/xsimd
+          ref: ebe9991fb0e8ed2dfb7c1a9425aaf6b104adab86
+          path: source
+      - name: Build diagnostic copy of original test
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          pacman -Q > evidence/packages.txt
+          cmake -S source -B source/_build -DBUILD_TESTS=ON -DDOWNLOAD_DOCTEST=ON -DCMAKE_CXX_STANDARD=23 -G Ninja > evidence/configure.log 2>&1
+          awk -f diagnostic/instrument.awk source/test/test_power.cpp > evidence/test_power.cpp
+          cp source/test/test_power.cpp evidence/original-test_power.cpp
+          sha256sum source/test/test_power.cpp source/include/xsimd/arch/common/xsimd_common_math.hpp > evidence/source.sha256
+          c++ -O3 -DNDEBUG -std=gnu++23 -march=native -g -Isource/include -Isource/test -Isource/_build/test -Idiagnostic -include diagnostic/phase.hpp diagnostic/trace-main.cpp evidence/test_power.cpp -o evidence/trace-power.exe > evidence/build.log 2>&1
+          sha256sum evidence/trace-power.exe > evidence/executable.sha256
+      - name: Capture fault in original test context
+        shell: msys2 {0}
+        run: |
+          root="$PWD"
+          /c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile \
+            -File "$(cygpath -w "$root/diagnostic/native-status.ps1")" \
+            -Exe "$(cygpath -w "$root/evidence/trace-power.exe")" \
+            -OutputDir "$(cygpath -w "$root/evidence")" -LocalizePower
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: clang64-original-power-trace
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
