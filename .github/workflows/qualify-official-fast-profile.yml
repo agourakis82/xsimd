@@ -1,0 +1,52 @@
+name: Qualify existing Clang 20 fast-math profile
+on:
+  push:
+    branches: ['diagnostics/clang64-20261031']
+    paths: ['.github/workflows/qualify-official-fast-profile.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: diagnostic
+      - uses: actions/checkout@v6
+        with:
+          repository: xtensor-stack/xsimd
+          ref: ebe9991fb0e8ed2dfb7c1a9425aaf6b104adab86
+          path: source
+      - name: Install the upstream profile's compiler
+        shell: bash
+        run: |
+          curl --fail --location https://apt.llvm.org/llvm.sh -o llvm.sh
+          sudo bash llvm.sh 20
+      - name: Unmodified and patched original full suites
+        shell: bash
+        env:
+          CC: clang-20
+          CXX: clang++-20
+        run: |
+          set -uo pipefail
+          mkdir -p evidence/before evidence/after
+          clang++-20 --version > evidence/compiler.txt
+          failed=0
+          for phase in before after; do
+            if [ "$phase" = after ]; then git -C source apply --unidiff-zero "$PWD/diagnostic/comparison-fenv.patch"; fi
+            if ! cmake -S source -B source/_build -DBUILD_TESTS=ON -DBUILD_BENCHMARK=ON -DBUILD_EXAMPLES=ON -DDOWNLOAD_DOCTEST=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=23 '-DCMAKE_CXX_FLAGS=-ffast-math -fsanitize=undefined -O0 -g -fno-inline' -G Ninja > "evidence/$phase/configure.log" 2>&1; then failed=1; continue; fi
+            if ! cmake --build source/_build --parallel 2 > "evidence/$phase/build.log" 2>&1; then failed=1; continue; fi
+            if ./source/_build/test/test_xsimd > "evidence/$phase/full.stdout" 2> "evidence/$phase/full.stderr"; then rc=0; else rc=$?; fi
+            printf '%s\n' "$rc" > "evidence/$phase/test.exit"
+            if [ "$rc" != 0 ]; then failed=1; fi
+          done
+          exit "$failed"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: clang20-official-fast-profile
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
