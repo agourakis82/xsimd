@@ -1,0 +1,19 @@
+diff --git a/test/test_power.cpp b/test/test_power.cpp
+index cdf8c14..5a4aee4 100644
+--- a/test/test_power.cpp
++++ b/test/test_power.cpp
+@@ -51,0 +52,4 @@ struct power_test
++#if defined(__clang__) && !defined(__FAST_MATH__)
++        // This test deliberately unmasks floating-point exceptions below.
++#pragma clang fp exceptions(strict)
++#endif
+diff --git a/test/test_utils.hpp b/test/test_utils.hpp
+index f0d64a7..b875c3e 100644
+--- a/test/test_utils.hpp
++++ b/test/test_utils.hpp
+@@ -154,0 +155,5 @@ namespace detail
++#if defined(__clang__) && !defined(__FAST_MATH__)
++        // Comparisons also run with FE_INVALID unmasked in the power tests.
++        // Do not speculate a division past the zero-denominator guard.
++#pragma clang fp exceptions(strict)
++#endif

@@ -1,0 +1,122 @@
+name: Qualify shared comparison exception contract
+on:
+  push:
+    branches: ['diagnostics/clang64-20261031']
+    paths: ['.github/workflows/clang64-qualify-fix.yml', 'comparison-fenv.patch']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: diagnostic
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
+        with:
+          msystem: CLANG64
+          update: true
+          path-type: minimal
+          pacboy: cc:p cmake:p ninja:p
+      - uses: actions/download-artifact@v4
+        with:
+          name: clang64-paired-native-status
+          path: previous
+          run-id: 41210500390
+          github-token: ${{ github.token }}
+      - uses: actions/checkout@v6
+        with:
+          repository: xtensor-stack/xsimd
+          ref: ebe9991fb0e8ed2dfb7c1a9425aaf6b104adab86
+          path: baseline
+      - uses: actions/checkout@v6
+        with:
+          repository: xtensor-stack/xsimd
+          ref: d46d757429cd2fd3abad7250445cec9d493b3f59
+          path: candidate
+      - name: Original failure control and full patched executables
+        shell: msys2 {0}
+        run: |
+          set -uo pipefail
+          root="$PWD"
+          mkdir -p evidence
+          pacman -Q > evidence/packages.txt
+          failed=0
+          git_exe='/c/Program Files/Git/bin/git.exe'
+          ps=/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+          for name in baseline candidate; do
+            mkdir -p "evidence/$name-before" "evidence/$name-after"
+            "$ps" -NoProfile -File "$(cygpath -w "$root/diagnostic/native-status.ps1")" \
+              -Exe "$(cygpath -w "$root/previous/$name/test_xsimd.exe")" \
+              -OutputDir "$(cygpath -w "$root/evidence/$name-before")" -LocalizePower \
+              > "evidence/$name-before/launch.log" 2>&1
+            before_rc=$?
+            if [ "$before_rc" != 1 ]; then failed=1; fi
+            "$git_exe" -C "$name" rev-parse HEAD > "evidence/$name-after/source-sha.txt" || failed=1
+            "$git_exe" -C "$name" apply --unidiff-zero "$root/diagnostic/comparison-fenv.patch" || { failed=1; continue; }
+            "$git_exe" -C "$name" diff --unified=0 > "evidence/$name-after/actual.patch" || failed=1
+            cmp diagnostic/comparison-fenv.patch "evidence/$name-after/actual.patch" || { failed=1; continue; }
+            if ! cmake -S "$name" -B "$name/_build" -DBUILD_TESTS=ON -DBUILD_BENCHMARK=ON -DBUILD_EXAMPLES=ON -DCMAKE_BUILD_TYPE=Release -DDOWNLOAD_DOCTEST=ON -DCMAKE_CXX_STANDARD=23 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -G Ninja > "evidence/$name-after/configure.log" 2>&1; then failed=1; continue; fi
+            cp "$name/_build/compile_commands.json" "evidence/$name-after/" || failed=1
+            cp "$name/_build/CMakeCache.txt" "evidence/$name-after/" || failed=1
+            if ! cmake --build "$name/_build" --parallel 2 > "evidence/$name-after/build.log" 2>&1; then failed=1; continue; fi
+            exe="$root/$name/_build/test/test_xsimd.exe"
+            cp "$exe" "evidence/$name-after/" || failed=1
+            sha256sum "$exe" > "evidence/$name-after/executable.sha256" || failed=1
+            "$ps" -NoProfile -File "$(cygpath -w "$root/diagnostic/native-status.ps1")" \
+              -Exe "$(cygpath -w "$exe")" -OutputDir "$(cygpath -w "$root/evidence/$name-after")" \
+              -LocalizePower > "evidence/$name-after/launch.log" 2>&1 || failed=1
+            (cd "$name" && timeout --kill-after=10s 180s ./_build/test/test_xsimd) > "evidence/$name-after/msys.stdout" 2> "evidence/$name-after/msys.stderr"
+            rc=$?
+            printf '%s\n' "$rc" > "evidence/$name-after/msys.exit"
+            if [ "$rc" != 0 ]; then failed=1; fi
+          done
+          exit "$failed"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: clang64-fenv-fix-qualification
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [gcc, clang-fast-sanitized]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: diagnostic
+      - uses: actions/checkout@v6
+        with:
+          repository: xtensor-stack/xsimd
+          ref: ebe9991fb0e8ed2dfb7c1a9425aaf6b104adab86
+          path: source
+      - name: Qualify unchanged GCC and fast-math profiles
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          git -C source apply --unidiff-zero "$PWD/diagnostic/comparison-fenv.patch"
+          args=()
+          if [ '${{ matrix.profile }}' = gcc ]; then
+            args=(-DCMAKE_CXX_COMPILER=g++)
+          else
+            args=(-DCMAKE_CXX_COMPILER=clang++ '-DCMAKE_CXX_FLAGS=-ffast-math -fsanitize=address,undefined -fno-omit-frame-pointer')
+          fi
+          cmake -S source -B source/_build -DBUILD_TESTS=ON -DDOWNLOAD_DOCTEST=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=23 -DBUILD_ARCHITECTURE_TESTS=OFF "${args[@]}" > evidence/configure.log 2>&1
+          cmake --build source/_build --target test_xsimd --parallel 2 > evidence/build.log 2>&1
+          ./source/_build/test/test_xsimd > evidence/full.stdout 2> evidence/full.stderr
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fenv-fix-${{ matrix.profile }}
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
