@@ -12,6 +12,14 @@ mkdir -p evidence/runtime
     env | LC_ALL=C sort | sed -n '/^MSYS/p;/^MSYSTEM/p'
 } > evidence/environment.txt 2>&1
 ps=/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+# setup-msys2's minimal PATH intentionally excludes Git for Windows. Use its
+# explicit executable for custody without changing test DLL lookup via PATH.
+git_exe='/c/Program Files/Git/bin/git.exe'
+if [ ! -x "$git_exe" ]; then
+    printf 'Git for Windows unavailable at explicit custody path\n' > evidence/custody-error.txt
+    exit 1
+fi
+"$git_exe" --version > evidence/git-version.txt
 cat > evidence/runtime/smoke.cpp <<'CPP'
 #include <iostream>
 #include <string>
@@ -32,8 +40,8 @@ fi
 for name in baseline candidate; do
     out="$root/evidence/$name"
     mkdir -p "$out"
-    if ! git -C "$name" rev-parse HEAD > "$out/source-sha.txt" ||
-       ! git -C "$name" status --porcelain > "$out/source-status.txt"; then
+    if ! "$git_exe" -C "$name" rev-parse HEAD > "$out/source-sha.txt" ||
+       ! "$git_exe" -C "$name" status --porcelain > "$out/source-status.txt"; then
         failed=1
         continue
     fi
