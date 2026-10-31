@@ -1,8 +1,5 @@
 name: Qualify shared comparison exception contract
 on:
-  push:
-    branches: ['diagnostics/clang64-20261031']
-    paths: ['.github/workflows/clang64-qualify-fix.yml', 'comparison-fenv.patch']
   workflow_dispatch:
 permissions:
   contents: read
@@ -49,11 +46,10 @@ jobs:
           ps=/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
           for name in baseline candidate; do
             mkdir -p "evidence/$name-before" "evidence/$name-after"
-            "$ps" -NoProfile -File "$(cygpath -w "$root/diagnostic/native-status.ps1")" \
+            if "$ps" -NoProfile -File "$(cygpath -w "$root/diagnostic/native-status.ps1")" \
               -Exe "$(cygpath -w "$root/previous/$name/test_xsimd.exe")" \
               -OutputDir "$(cygpath -w "$root/evidence/$name-before")" -LocalizePower \
-              > "evidence/$name-before/launch.log" 2>&1
-            before_rc=$?
+              > "evidence/$name-before/launch.log" 2>&1; then before_rc=0; else before_rc=$?; fi
             if [ "$before_rc" != 1 ]; then failed=1; fi
             "$git_exe" -C "$name" rev-parse HEAD > "evidence/$name-after/source-sha.txt" || failed=1
             "$git_exe" -C "$name" apply --unidiff-zero "$root/diagnostic/comparison-fenv.patch" || { failed=1; continue; }
@@ -69,8 +65,7 @@ jobs:
             "$ps" -NoProfile -File "$(cygpath -w "$root/diagnostic/native-status.ps1")" \
               -Exe "$(cygpath -w "$exe")" -OutputDir "$(cygpath -w "$root/evidence/$name-after")" \
               -LocalizePower > "evidence/$name-after/launch.log" 2>&1 || failed=1
-            (cd "$name" && timeout --kill-after=10s 180s ./_build/test/test_xsimd) > "evidence/$name-after/msys.stdout" 2> "evidence/$name-after/msys.stderr"
-            rc=$?
+            if (cd "$name" && timeout --kill-after=10s 180s ./_build/test/test_xsimd) > "evidence/$name-after/msys.stdout" 2> "evidence/$name-after/msys.stderr"; then rc=0; else rc=$?; fi
             printf '%s\n' "$rc" > "evidence/$name-after/msys.exit"
             if [ "$rc" != 0 ]; then failed=1; fi
           done
