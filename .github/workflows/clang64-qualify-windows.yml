@@ -57,7 +57,9 @@ jobs:
             "$git_exe" -C "$name" rev-parse HEAD > "evidence/$name-after/source-sha.txt" || failed=1
             "$git_exe" -C "$name" apply --unidiff-zero "$root/diagnostic/comparison-fenv.patch" || { failed=1; continue; }
             "$git_exe" -C "$name" diff --unified=0 > "evidence/$name-after/actual.patch" || failed=1
-            cmp diagnostic/comparison-fenv.patch "evidence/$name-after/actual.patch" || { failed=1; continue; }
+            read -r expected_patch_sha _ < <(sha256sum diagnostic/comparison-fenv.patch)
+            read -r actual_patch_sha _ < <(sha256sum "evidence/$name-after/actual.patch")
+            if [ "$expected_patch_sha" != "$actual_patch_sha" ]; then failed=1; continue; fi
             if ! cmake -S "$name" -B "$name/_build" -DBUILD_TESTS=ON -DBUILD_BENCHMARK=ON -DBUILD_EXAMPLES=ON -DCMAKE_BUILD_TYPE=Release -DDOWNLOAD_DOCTEST=ON -DCMAKE_CXX_STANDARD=23 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -G Ninja > "evidence/$name-after/configure.log" 2>&1; then failed=1; continue; fi
             cp "$name/_build/compile_commands.json" "evidence/$name-after/" || failed=1
             cp "$name/_build/CMakeCache.txt" "evidence/$name-after/" || failed=1
