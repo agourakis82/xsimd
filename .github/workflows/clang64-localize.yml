@@ -1,8 +1,5 @@
 name: Localize CLANG64 floating exception
 on:
-  push:
-    branches: ['diagnostics/clang64-20261031']
-    paths: ['.github/workflows/clang64-localize.yml', 'native-status.ps1']
   workflow_dispatch:
 permissions:
   contents: read

@@ -1,0 +1,59 @@
+name: Separate pow arithmetic from test machinery
+on:
+  push:
+    branches: ['diagnostics/clang64-20261031']
+    paths: ['.github/workflows/clang64-pow-probe.yml', 'pow-probe.cpp']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: diagnostic
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
+        with:
+          msystem: CLANG64
+          update: true
+          path-type: minimal
+          pacboy: cc:p cmake:p ninja:p
+      - uses: actions/checkout@v6
+        with:
+          repository: xtensor-stack/xsimd
+          ref: ebe9991fb0e8ed2dfb7c1a9425aaf6b104adab86
+          path: source
+      - name: Compile and run C++23 discriminators
+        shell: msys2 {0}
+        run: |
+          set -uo pipefail
+          root="$PWD"
+          mkdir -p evidence
+          pacman -Q > evidence/packages.txt
+          failed=0
+          for profile in original-options strict; do
+            out="$root/evidence/$profile"
+            mkdir -p "$out"
+            extra=()
+            if [ "$profile" = strict ]; then extra=(-ffp-model=strict); fi
+            printf 'c++ -O3 -DNDEBUG -std=gnu++23 -march=native %s -Isource/include diagnostic/pow-probe.cpp\n' "${extra[*]}" > "$out/command.txt"
+            if ! c++ -O3 -DNDEBUG -std=gnu++23 -march=native "${extra[@]}" -Isource/include diagnostic/pow-probe.cpp -o "$out/pow-probe.exe" > "$out/build.log" 2>&1; then
+              failed=1
+              continue
+            fi
+            sha256sum "$out/pow-probe.exe" > "$out/executable.sha256" || failed=1
+            /c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile \
+              -File "$(cygpath -w "$root/diagnostic/native-status.ps1")" \
+              -Exe "$(cygpath -w "$out/pow-probe.exe")" \
+              -OutputDir "$(cygpath -w "$out")" -Probe || failed=1
+          done
+          exit "$failed"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: clang64-pow-discriminators
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14

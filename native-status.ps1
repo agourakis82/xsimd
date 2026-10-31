@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory=$true)][string]$OutputDir,
     [switch]$Smoke,
     [switch]$RequireSqrt,
-    [switch]$LocalizePower
+    [switch]$LocalizePower,
+    [switch]$Probe
 )
 $ErrorActionPreference = 'Stop'
 $resolved = (Resolve-Path -LiteralPath $Exe).Path
@@ -23,8 +24,21 @@ if ($LocalizePower) {
         @{Name='full'; Args='--no-colors=true'}
     )
 }
+if ($Probe) {
+    $cases = @()
+    foreach ($kind in @('float', 'double')) {
+        $cases += @{Name="sticky-$kind"; Args="sticky $kind mixed"}
+        foreach ($pattern in @('mixed', 'positive')) {
+            foreach ($mode in @('masked', 'trap')) {
+                $cases += @{Name="$mode-$kind-$pattern"; Args="$mode $kind $pattern"}
+            }
+        }
+    }
+}
 $results = @()
 $failed = $false
+$waitMs = 90000
+if ($Probe) { $waitMs = 20000 }
 foreach ($case in $cases) {
     $p = New-Object System.Diagnostics.Process
     $p.StartInfo.FileName = $resolved
@@ -38,7 +52,7 @@ foreach ($case in $cases) {
         [void]$p.Start()
         $stdout = $p.StandardOutput.ReadToEndAsync()
         $stderr = $p.StandardError.ReadToEndAsync()
-        if (-not $p.WaitForExit(90000)) {
+        if (-not $p.WaitForExit($waitMs)) {
             $p.Kill()
             $p.WaitForExit()
             $record.Timeout = $true
