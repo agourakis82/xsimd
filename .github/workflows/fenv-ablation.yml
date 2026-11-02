@@ -36,7 +36,7 @@ jobs:
         run: |
           set -euo pipefail
           root="$PWD"
-          mkdir -p evidence
+          mkdir -p evidence/native
           pacman -Q > evidence/packages.txt
           git_exe='/c/Program Files/Git/bin/git.exe'
           "$git_exe" -C source rev-parse HEAD > evidence/source-sha.txt
