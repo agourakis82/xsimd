@@ -56,6 +56,16 @@ struct complex_power_test
             rhs[i] = value_type(real_value_type(10.2) / (i + 2) + real_value_type(0.25),
                                 real_value_type(9.1) / (i + 3) + real_value_type(0.45));
         }
+        // Mix real-axis inputs with signed zero imaginary parts into the sqrt-only inputs.
+        using R = real_value_type;
+        const R reals[] = { 0., std::numeric_limits<R>::denorm_min(), 0.25, 1, 4, std::numeric_limits<R>::max() };
+        size_t index = 0;
+        for (R re : reals)
+            for (R im : { R(-0.), R(0.) })
+            {
+                lhs_nn[2 * index] = value_type(-re, im);
+                lhs_pn[2 * index++] = value_type(re, im);
+            }
         expected.resize(nb_input);
         res.resize(nb_input);
     }
@@ -158,7 +168,7 @@ struct complex_power_test
             detail::load_batch(in, lhs_nn, i);
             out = sqrt(in);
             detail::load_batch(ref, expected, i);
-            CHECK_BATCH_EQ(ref, out);
+            check_sqrt(ref, out);
         }
     }
 
@@ -173,7 +183,7 @@ struct complex_power_test
             detail::load_batch(in, lhs_pn, i);
             out = sqrt(in);
             detail::load_batch(ref, expected, i);
-            CHECK_BATCH_EQ(ref, out);
+            check_sqrt(ref, out);
         }
     }
 
@@ -204,6 +214,20 @@ struct complex_power_test
             out = sqrt(in);
             detail::load_batch(ref, expected, i);
             CHECK_BATCH_EQ(ref, out);
+        }
+    }
+
+    // CHECK_BATCH_EQ ignores the sign of zero, so compare it explicitly.
+    void check_sqrt(const batch_type& ref, const batch_type& out)
+    {
+        CHECK_BATCH_EQ(ref, out);
+        for (size_t lane = 0; lane < size; ++lane)
+        {
+            const value_type r = ref.get(lane), o = out.get(lane);
+            if (r.real() == 0)
+                CHECK_EQ(std::signbit(o.real()), std::signbit(r.real()));
+            if (r.imag() == 0)
+                CHECK_EQ(std::signbit(o.imag()), std::signbit(r.imag()));
         }
     }
 };
