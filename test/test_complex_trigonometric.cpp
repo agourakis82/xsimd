@@ -50,6 +50,18 @@ struct complex_trigonometric_test
             atan_input[i] = value_type(real_value_type(-9.5) + i * real_value_type(20.) / nb_input,
                                        real_value_type(-9.) + i * real_value_type(21.) / nb_input);
         }
+        // Mix real-axis branch cuts (including values just outside [-1, 1]) with non-real inputs.
+        using R = real_value_type;
+        const R outside = std::nextafter(R(1), R(2));
+        const R reals[] = { -4, -2, -outside, -1, -0.5, -0., 0., 0.5, 1, outside, 2, 4 };
+        size_t index = 0;
+        for (R re : reals)
+            for (R im : { R(0.), R(-0.) })
+                ainput[2 * index++] = value_type(re, im);
+        ainput[1] = value_type(-2, -1);
+        ainput[3] = value_type(2, 1);
+        ainput[5] = value_type(R(-0.5), R(0.5));
+        ainput[7] = value_type(R(0.5), R(-0.5));
         expected.resize(nb_input);
     }
 
@@ -122,7 +134,7 @@ struct complex_trigonometric_test
             detail::load_batch(in, ainput, i);
             out = asin(in);
             detail::load_batch(ref, expected, i);
-            CHECK_BATCH_EQ(ref, out);
+            check_inverse_trig(ref, out);
         }
     }
 
@@ -137,7 +149,7 @@ struct complex_trigonometric_test
             detail::load_batch(in, ainput, i);
             out = acos(in);
             detail::load_batch(ref, expected, i);
-            CHECK_BATCH_EQ(ref, out);
+            check_inverse_trig(ref, out);
         }
     }
 
@@ -157,6 +169,20 @@ struct complex_trigonometric_test
     }
 
 private:
+    // CHECK_BATCH_EQ ignores the sign of zero, so compare it explicitly.
+    void check_inverse_trig(const batch_type& ref, const batch_type& out)
+    {
+        CHECK_BATCH_EQ(ref, out);
+        for (size_t lane = 0; lane < size; ++lane)
+        {
+            const value_type r = ref.get(lane), o = out.get(lane);
+            if (r.real() == 0)
+                CHECK_EQ(std::signbit(o.real()), std::signbit(r.real()));
+            if (r.imag() == 0)
+                CHECK_EQ(std::signbit(o.imag()), std::signbit(r.imag()));
+        }
+    }
+
     void test_tan_impl()
     {
         std::transform(input.cbegin(), input.cend(), expected.begin(),
