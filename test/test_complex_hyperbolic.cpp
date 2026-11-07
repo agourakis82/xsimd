@@ -46,16 +46,12 @@ struct complex_hyperbolic_test
                                         real_value_type(-0.94) + i * real_value_type(1.8) / nb_input);
         }
         // Cover both half-planes with mixed positive and negative imaginary lanes.
+        using R = real_value_type;
+        const R reals[] = { -4, -2, -1, -0.5, 0.5, 1, 2, 4 };
         size_t index = 0;
-        for (real_value_type re : { real_value_type(-4), real_value_type(-2), real_value_type(-1),
-                                   real_value_type(-0.5), real_value_type(0.5), real_value_type(1),
-                                   real_value_type(2), real_value_type(4) })
-        {
-            for (real_value_type im : { real_value_type(1), real_value_type(-1) })
-            {
+        for (R re : reals)
+            for (R im : { R(1), R(-1) })
                 acosh_input[index++] = value_type(re, im);
-            }
-        }
         expected.resize(nb_input);
     }
 
