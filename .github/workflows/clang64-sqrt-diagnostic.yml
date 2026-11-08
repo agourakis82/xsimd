@@ -1,40 +1,44 @@
-name: Isolated CLANG64 diagnosis
+name: Diagnose CLANG64 sqrt review
 on:
+  push:
+    branches: ['diagnostics/clang64-20261108-sqrt']
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  paired:
+  paired-native:
     runs-on: windows-2022
-    timeout-minutes: 35
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v6
         with:
+          persist-credentials: false
           path: diagnostic
       - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
         with:
           msystem: CLANG64
           update: true
           path-type: minimal
-          pacboy: cc:p cmake:p ninja:p
+          pacboy: cc:p cmake:p ninja:p gdb:p
       - uses: actions/checkout@v6
         with:
+          persist-credentials: false
           repository: xtensor-stack/xsimd
-          ref: ebe9991fb0e8ed2dfb7c1a9425aaf6b104adab86
+          ref: ebaa766d942292304c27103fa45d6bb4dae8cc37
           path: baseline
       - uses: actions/checkout@v6
         with:
+          persist-credentials: false
           repository: xtensor-stack/xsimd
-          ref: d46d757429cd2fd3abad7250445cec9d493b3f59
-          path: candidate
-      - name: Build and capture native status in the same environment
+          ref: fd59b61024d4e5f71843d459e2c2af3c55a37871
+          path: head
+      - name: Compare original base, head and proposed test
         shell: msys2 {0}
         run: bash diagnostic/diagnose.sh
-      - name: Retain diagnostics and executable provenance
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: clang64-paired-native-status
+          name: clang64-sqrt-native-diagnostic
           path: evidence/
           if-no-files-found: error
           retention-days: 14

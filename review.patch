@@ -1,0 +1,19 @@
+diff --git a/test/test_complex_power.cpp b/test/test_complex_power.cpp
+index c1f6eadc..eb1f6f81 100644
+--- a/test/test_complex_power.cpp
++++ b/test/test_complex_power.cpp
+@@ -244,9 +244,12 @@ struct complex_power_test
+                     ? value_type(zero, std::copysign(magnitude, y))
+                     : value_type(magnitude, y);
+                 CHECK_EQ(results[lane].real(), ref.real());
++#ifdef __FAST_MATH__
++                // Signed-zero semantics are not guaranteed under fast-math.
+                 CHECK_EQ(std::abs(results[lane].imag()), std::abs(ref.imag()));
+-#ifndef __FAST_MATH__
+-                // Fast-math does not preserve the side of the real-axis branch cut.
++#else
++                CHECK_EQ(results[lane].imag(), ref.imag());
++                // Equality does not distinguish +0 from -0.
+                 CHECK_EQ(std::signbit(results[lane].real()), std::signbit(ref.real()));
+                 CHECK_EQ(std::signbit(results[lane].imag()), std::signbit(ref.imag()));
+ #endif
