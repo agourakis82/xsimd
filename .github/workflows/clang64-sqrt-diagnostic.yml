@@ -1,3 +1,4 @@
+# Compare the untouched base and PR head before testing the proposed assertion change.
 name: Diagnose CLANG64 sqrt review
 on:
   push:
